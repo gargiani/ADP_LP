@@ -1,24 +1,14 @@
-from ADP_LP import Qstar_LP, Qhat_LP, linear_policy
-from lqr import dlqr
+from ADP_LP.methods import Qstar_LP, Qhat_LP
+from ADP_LP.policies import linear_policy
+from ADP_LP.dynamical_systems import dlqr
 import numpy as np
 import json
 import os
 import torch
+import argparse
+from auxiliaries import str2bool
 
 type = torch.float64
-
-def str2bool(v):
-    if isinstance(v, bool):
-       return v
-    if v.lower() in ('yes', 'true', 't', 'y', '1'):
-        return True
-    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
-        return False
-    else:
-        raise argparse.ArgumentTypeError('Boolean value expected.')
-
-
-import argparse
 
 parser = argparse.ArgumentParser(description='Solving LQR with LP approach.')
 
@@ -42,13 +32,14 @@ constraints', default=1000)
 parser.add_argument('-save', type=str2bool, help='save results', default=True)
 parser.add_argument('-eps', type=float, help='noise corruption \
 affecting action', default=0.0)
+parser.add_argument('-verbose', type=int, help='solver verbose', default=1)
 
 args = parser.parse_args()
 
-res_dir = 'results_erdos_renyi'
+res_dir = '../results'
 
 #import the dynamical system: x_{k+1} = A*x_{k} + B*u_{k} + w_{k}, l(x, u) = x^T*C^T*C*x + rho*u^T*u
-directory = 'models_erdos_renyi'#'Erdos_Renyi_LTI_systems'
+directory = '../data'#'Erdos_Renyi_LTI_systems'
 
 torch.manual_seed(args.random_seed)
 
@@ -79,13 +70,13 @@ XU_weights = torch.cat((torch.ones(args.n_x, dtype=type), 0.1*torch.ones(N_u, dt
 #compute LQR solutions via DARE
 P_opt, M_opt, e_star = LQR.optimal_solution()
 Q_star, E_Qstar, gap = LQR.optimal_q(P_opt, e_star, XU_weights)
-import pdb; pdb.set_trace()
+
 #optimization method
 if args.LP_approach == 1:
-    method = Qstar_LP(LQR, XU_weights, linear_policy, args.LP_solver)
+    method = Qstar_LP(LQR, XU_weights, linear_policy, args.LP_solver, verbose=args.verbose)
     eps = [args.eps]
 else:
-    method = Qhat_LP(LQR, XU_weights, linear_policy, args.LP_solver)
+    method = Qhat_LP(LQR, XU_weights, linear_policy, args.LP_solver, verbose=args.verbose)
     eps = [args.eps, args.eps]
 
 #refresh memory of method

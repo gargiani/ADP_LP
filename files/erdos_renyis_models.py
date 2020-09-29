@@ -10,7 +10,7 @@ This script creates and saves in json files LTI systems using the Erdos-Renyi mo
 #set random seed
 np.random.seed(0)
 
-N_x = [i for i in range(2, 100, 2)]
+N_x = [i for i in range(2, 52, 2)]
 
 #parameters for realization of Erdos-Renyi's graph
 p = 0.7

@@ -4,3 +4,7 @@ venv
 env
 .pytest_cache
 .coverage
+build/
+dist/
+ADP_LP.egg-info/
+
