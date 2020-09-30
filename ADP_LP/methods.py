@@ -1,6 +1,7 @@
 import scipy.optimize
 import torch
 import time
+import numpy as np
 import gurobipy as gp
 from gurobipy import GRB
 from ADP_LP.policies import linear_policy
@@ -21,6 +22,7 @@ class LP_approach:
         self.b_memory = None
         self.LP_solver = LP_solver
         self.verbose = verbose
+        self.K_lim = 50
 
     def __call_solver__(self, A, b, c):
 
@@ -73,8 +75,8 @@ class LP_approach:
                     m.setParam('OutputFlag', 0)
 
                 m.setParam('DualReductions', 0)
-                m.setParam('FeasibilityTol', 1e-9)
-                m.setParam('OptimalityTol', 1e-9)
+                #m.setParam('FeasibilityTol', 1e-9)
+                #m.setParam('OptimalityTol', 1e-9)
 
                 x = m.addMVar(shape=c.numpy().shape[0], lb=-GRB.INFINITY,\
                               ub=GRB.INFINITY, vtype=GRB.CONTINUOUS, name='x')
@@ -106,15 +108,26 @@ class LP_approach:
         X_buffer = (X_space[0] - X_space[1])*torch.rand((P, self.lqr.N_x, 1), dtype=type) + X_space[1]
 
         if M==None:
-            print('using explorative roll-outs')
             U_buffer = (U_space[0] - U_space[1])*torch.rand((P, self.lqr.N_u, 1), dtype=type) + U_space[1]
         else:
-            print('unsing linear policy for roll-outs')
             U_buffer = self.policy(M, X_buffer, epsilon)
-
         Xplus_buffer, L_buffer, W = self.lqr.simulate(K, X_buffer, U_buffer)
-
         return X_buffer, U_buffer, Xplus_buffer, L_buffer, W
+
+    def __high_performance_mean_4D__(self, V):
+
+        print('calling the high performance mean on 4D')
+
+        if len(V.shape)!= 4:
+
+            raise Exception('dimensions mismatch!')
+
+        for count, ii in enumerate(range(int(np.ceil(V.shape[1]/self.K_lim)))):
+            if count > 0:
+                dot_V = dot_V + torch.matmul(V[:, int(ii*self.K_lim): int((ii+1)*self.K_lim), :,:], V[:, int(ii*self.K_lim): int((ii+1)*self.K_lim), :,:].transpose(2, 3)).sum(dim=1)
+            else:
+                dot_V = torch.matmul(V[:,int(ii*self.K_lim): int((ii+1)*self.K_lim), :,:], V[:,int(ii*self.K_lim): int((ii+1)*self.K_lim), :,:].transpose(2, 3)).sum(dim=1)
+        return dot_V/V.shape[1]
 
     def greedy_policy(self, S):
 
@@ -154,7 +167,9 @@ class Qstar_LP(LP_approach):
         A_Q = torch.cat((torch.reshape(A_Q, (A_Q.shape[0], (self.lqr.N_x+self.lqr.N_u)**2, )),\
                          torch.ones((A_Q.shape[0], 1), dtype=type)), -1)
 
-        Aplus_V = self.lqr.gamma*torch.mean(torch.matmul(Xplus, Xplus.transpose(2, 3)), 1)
+        mean_XU_plus = self.__high_performance_mean_4D__(Xplus)
+
+        Aplus_V = self.lqr.gamma*mean_XU_plus#torch.mean(torch.matmul(Xplus, Xplus.transpose(2, 3)), 1)
 
         Aplus_V = torch.cat((torch.reshape(Aplus_V, (Aplus_V.shape[0], self.lqr.N_x**2, )),\
                              self.lqr.gamma*torch.ones((Aplus_V.shape[0], 1), dtype=type)), -1)
@@ -213,7 +228,9 @@ class Qstar_LP(LP_approach):
 
         A_Q = torch.cat((A_Q, torch.ones((A_Q.shape[0], 1), dtype=type)), -1)
 
-        Aplus_V = self.lqr.gamma*torch.mean(torch.matmul(Xplus, Xplus.transpose(2, 3)), 1)
+        mean_XU_plus = self.__high_performance_mean_4D__(Xplus)
+
+        Aplus_V = self.lqr.gamma*mean_XU_plus#torch.mean(torch.matmul(Xplus, Xplus.transpose(2, 3)), 1)
 
         mask = torch.cat(Aplus_V.shape[0]*[torch.eye(Aplus_V.shape[1], Aplus_V.shape[2], dtype=torch.bool).unsqueeze(0)], 0)
         Aplus_V = Aplus_V + Aplus_V.clone().masked_fill_(mask, 0)
@@ -279,26 +296,25 @@ class Qhat_LP(LP_approach):
         #self.N_var = (self.lqr.N_x+self.lqr.N_u)**2 + 1
 
     def buffer(self, P, K, M=None, X_space=[-10, 10], U_space=[-10, 10], epsilon=[None, None]):
-
         X_buffer, U_buffer, Xplus_buffer, L_buffer, W = \
         self.__sampling__(P, K, M, X_space, U_space, epsilon[0])
-
         if M==None:
             Uprime_buffer = (U_space[0] - U_space[1])*torch.rand((P, self.lqr.N_u, 1), dtype=type) + U_space[1]
             Uprime_buffer = torch.cat((K*[Uprime_buffer.unsqueeze(1)]), 1)
         else:
             Uprime_buffer = self.policy(M, Xplus_buffer, epsilon[1])
-
         return X_buffer, U_buffer, Xplus_buffer, L_buffer, W, Uprime_buffer
 
     def policy_evaluation(self, X, U, L, Xplus, Uprime):
-
         XU = torch.cat((X, U), 1)
-
         XU_prime = torch.cat((Xplus, Uprime), 2)
-
-        A = torch.matmul(XU, XU.transpose(1,2)) -\
-            self.lqr.gamma*torch.mean(torch.matmul(XU_prime, XU_prime.transpose(2, 3)), 1)
+        if XU_prime.shape[1]<self.K_lim:
+            A = torch.matmul(XU, XU.transpose(1,2)) -\
+                self.lqr.gamma*torch.mean(torch.matmul(XU_prime, XU_prime.transpose(2, 3)), 1)
+        else:
+            mean_XU_prime = self.__high_performance_mean_4D__(XU_prime)
+            A = torch.matmul(XU, XU.transpose(1,2)) -\
+                self.lqr.gamma*mean_XU_prime
 
         A = torch.cat((torch.reshape(A, (A.shape[0], (self.lqr.N_x+self.lqr.N_u)**2, )),\
                       (1-self.lqr.gamma)*torch.ones((A.shape[0], 1), dtype=type)), -1)
@@ -327,8 +343,15 @@ class Qhat_LP(LP_approach):
 
         XU_prime = torch.cat((Xplus, Uprime), 2)
 
-        A = torch.matmul(XU, XU.transpose(1,2)) -\
-            self.lqr.gamma*torch.mean(torch.matmul(XU_prime, XU_prime.transpose(2, 3)), 1)
+        if XU_prime.shape[1]<self.K_lim:
+
+            A = torch.matmul(XU, XU.transpose(1,2)) -\
+                self.lqr.gamma*torch.mean(torch.matmul(XU_prime, XU_prime.transpose(2, 3)), 1)
+        else:
+            mean_XU_prime = self.__high_performance_mean_4D__(XU_prime)
+
+            A = torch.matmul(XU, XU.transpose(1,2)) -\
+                self.lqr.gamma*mean_XU_prime
 
         mask = torch.cat(A.shape[0]*[torch.eye(A.shape[1], A.shape[2], dtype=torch.bool).unsqueeze(0)], 0)
         A = A + A.clone().masked_fill_(mask, 0)

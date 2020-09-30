@@ -31,6 +31,8 @@ class dlqr:
             W = torch.zeros((X.shape[0], K, self.N_x, 1), dtype=type)
 
         else:
+            #TODO is there a more efficient way to do that?? I do not think so...
+            #sampling is really expensive
             #torch.normal --> takes as input the std deviation!
             W = torch.reshape(self.normal.sample((X.shape[0]*K, )), (X.shape[0], K, self.N_x, 1))
             #W = torch.normal(0, self.sigma, size=(X.shape[0], K, self.N_x, 1), dtype=type)
@@ -38,7 +40,7 @@ class dlqr:
         L_x = torch.matmul(torch.matmul(X.transpose(1,2), self.Q), X)
         L_u = torch.matmul(torch.matmul(U.transpose(1,2), self.R), U)
 
-        return torch.cat(K*[X_plus.unsqueeze(1)], 1) + W, L_x + L_u, W
+        return X_plus.unsqueeze(1) + W, L_x + L_u, W
 
     def optimal_solution(self):
 
