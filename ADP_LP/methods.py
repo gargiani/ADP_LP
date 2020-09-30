@@ -22,7 +22,7 @@ class LP_approach:
         self.b_memory = None
         self.LP_solver = LP_solver
         self.verbose = verbose
-        self.K_lim = 50
+        self.K_lim = 100
 
     def __call_solver__(self, A, b, c):
 
@@ -115,8 +115,6 @@ class LP_approach:
         return X_buffer, U_buffer, Xplus_buffer, L_buffer, W
 
     def __high_performance_mean_4D__(self, V):
-
-        print('calling the high performance mean on 4D')
 
         if len(V.shape)!= 4:
 

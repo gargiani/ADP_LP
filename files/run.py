@@ -114,30 +114,47 @@ print('extract the greedy policy')
 if x_star is not None:
     M = method.greedy_policy(Q_q)
     M = M.tolist()
+    if args.save:
+        res = {'M': M, 'obj_fun': E_Q, 'obj_fun_star': E_Qstar,\
+               'time': time,'M_star': M_opt.tolist(), 'gap': gap.tolist(),\
+               'Q_q': Q_q.tolist(),'e_q': e_q.tolist(),'rho':rho,\
+               'eps': eps,'gamma': gamma, 'sigma': std_dev,\
+               'c': XU_weights.tolist(), 'x_range':args.x_range, 'state':'solved'}
+        if args.exp_sampling:
+            res['u_range'] = args.u_range
+        else:
+            res['M_0'] = M_0.tolist()
+
 else:
     M = None
-    raise Exception('ops! looks like the problem is unbounded...')
+    if args.save:
+        res = {'state':'unbounded', 'obj_fun_star': E_Qstar,\
+               'time': time,'M_star': M_opt.tolist(), 'gap': gap.tolist(),\
+               'rho':rho,'eps': eps,'gamma': gamma, 'sigma': std_dev,\
+               'c': XU_weights.tolist(), 'x_range':args.x_range}
+        if args.exp_sampling:
+            res['u_range'] = args.u_range
+        else:
+            res['M_0'] = M_0.tolist()
 
+if args.LP_approach == 1:
+    try:
+        print('optimality gap {}, solver time [s] {}'.format(np.abs(E_Q-E_Qstar), time))
+    except:
+        print('ops! looks like your problem is unbounded.')
+elif args.LP_approach == 2:
+    try:
+        print('optimality gap {}, solver time [s] {}'.format(np.abs(E_Q-gap-E_Qstar), time))
+    except:
+        print('ops! looks like your problem is unbounded.')
 
 if args.save:
-    res = {'M': M, 'obj_fun': E_Q, 'obj_fun_star': E_Qstar,\
-           'time': time,\
-           'M_star': M_opt.tolist(), 'gap': gap.tolist(), 'Q_q': Q_q.tolist(),\
-           'e_q': e_q.tolist(), 'A':A.tolist(), 'B':B.tolist(), 'C':C.tolist(),
-           'rho':rho, 'eps': eps,'gamma': gamma, 'sigma': std_dev,\
-           'c': XU_weights.tolist(), 'x_range':args.x_range}
-    if args.exp_sampling:
-        res['u_range'] = args.u_range
-    else:
-        res['M_0'] = M_0.tolist()
-
     #saving results
     if args.LP_approach == 1:
         root_directory = 'Q_star_LP'
-        print('optimality gap {}'.format(np.abs(E_Q-E_Qstar)))
+
     elif args.LP_approach == 2:
         root_directory = 'Q_hat_LP'
-        print('optimality gap {}'.format(np.abs(E_Q-gap-E_Qstar)))
 
     if not os.path.exists(os.path.join(res_dir, root_directory)):
         os.makedirs(os.path.join(res_dir, root_directory))
