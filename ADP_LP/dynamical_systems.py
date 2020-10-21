@@ -79,7 +79,7 @@ class cart_pole:
 
     def __init__(self, m_c, m_p, l, delta_t, C, rho, gamma, sigma):
 
-        #system with 4 states and 1 input
+        #non-linear system with 4 states and 1 input
         self.N_u = 1
         self.N_x = 4
 
@@ -163,7 +163,7 @@ class pendulum:
 
     def __init__(self, m, l, k, delta_t, C, rho, gamma, sigma):
 
-        #system with 4 states and 1 input
+        #non-linear system with 2 states and 1 input
         self.N_u = 1
         self.N_x = 2
 
