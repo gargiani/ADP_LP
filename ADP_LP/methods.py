@@ -10,12 +10,12 @@ type = torch.float64
 
 class LP_approach:
 
-    def __init__(self, lqr, Sigma, pi, LP_solver='scipy', verbose=1):
+    def __init__(self, sys, Sigma, pi, LP_solver='scipy', verbose=1):
         if LP_solver not in ['GUROBI', 'scipy']:
             LP_solver = 'scipy'
             raise Warning('The selected LP solver is not available.\
                            scipy LP solver will be used instead.')
-        self.lqr = lqr
+        self.sys = sys
         self.Sigma = Sigma
         self.policy = pi
         self.A_memory = None
@@ -105,13 +105,22 @@ class LP_approach:
 
     def __sampling__(self, P, K, M, X_space, U_space, epsilon):
 
-        X_buffer = (X_space[0] - X_space[1])*torch.rand((P, self.lqr.N_x, 1), dtype=type) + X_space[1]
+        if len(X_space)==1:
+            X_buffer = (X_space[0][0] - X_space[0][1])*torch.rand((P, self.sys.N_x, 1), dtype=type) + X_space[0][1]
 
+        elif len(X_space)==self.sys.N_x:
+            X_buffer = torch.tensor([], dtype=type)
+            for n_x in range(self.sys.N_x):
+                X_buffer = torch.cat((X_buffer,(X_space[n_x][0] - X_space[n_x][1])*torch.rand((P, 1, 1), dtype=type) + X_space[n_x][1]), 1)
+
+        else:
+            raise Exception('the number of initialization ranges for the states \
+                             are not coeherent with the number of states of the system!')
         if M==None:
-            U_buffer = (U_space[0] - U_space[1])*torch.rand((P, self.lqr.N_u, 1), dtype=type) + U_space[1]
+            U_buffer = (U_space[0] - U_space[1])*torch.rand((P, self.sys.N_u, 1), dtype=type) + U_space[1]
         else:
             U_buffer = self.policy(M, X_buffer, epsilon)
-        Xplus_buffer, L_buffer, W = self.lqr.simulate(K, X_buffer, U_buffer)
+        Xplus_buffer, L_buffer, W = self.sys.simulate(K, X_buffer, U_buffer)
         return X_buffer, U_buffer, Xplus_buffer, L_buffer, W
 
     def __high_performance_mean_4D__(self, V):
@@ -129,10 +138,10 @@ class LP_approach:
 
     def greedy_policy(self, S):
 
-        C_x = -(S[self.lqr.N_x:, :self.lqr.N_x] + \
-              torch.transpose(S[:self.lqr.N_x, self.lqr.N_x:], 0, 1))
-        J_u = S[self.lqr.N_x:, self.lqr.N_x:] + \
-              torch.transpose(S[self.lqr.N_x:, self.lqr.N_x:], 1, 0)
+        C_x = -(S[self.sys.N_x:, :self.sys.N_x] + \
+              torch.transpose(S[:self.sys.N_x, self.sys.N_x:], 0, 1))
+        J_u = S[self.sys.N_x:, self.sys.N_x:] + \
+              torch.transpose(S[self.sys.N_x:, self.sys.N_x:], 1, 0)
 
         try:
             M = torch.matmul(torch.inverse(J_u), C_x)
@@ -144,12 +153,12 @@ class Qstar_LP(LP_approach):
 
     """Data-Driven Q-learning with LP approach."""
 
-    def __init__(self, lqr, Sigma, pi, LP_solver='scipy', verbose=1):
+    def __init__(self, sys, Sigma, pi, LP_solver='scipy', verbose=1):
 
-        super().__init__(lqr, Sigma, pi, LP_solver, verbose)
-        #self.N_var = (self.lqr.N_x+self.lqr.N_u)**2 + self.lqr.N_x**2 + 2
+        super().__init__(sys, Sigma, pi, LP_solver, verbose)
+        #self.N_var = (self.sys.N_x+self.sys.N_u)**2 + self.sys.N_x**2 + 2
 
-    def buffer(self, P, K, M=None, X_space=[-10, 10], U_space=[-10, 10], epsilon=[None]):
+    def buffer(self, P, K, M=None, X_space=[[-10, 10]], U_space=[-10, 10], epsilon=[None]):
 
         X_buffer, U_buffer, Xplus_buffer, L_buffer, W = \
         self.__sampling__(P, K, M, X_space, U_space, epsilon[0])
@@ -162,19 +171,19 @@ class Qstar_LP(LP_approach):
 
         A_Q = torch.matmul(XU, XU.transpose(1,2))
 
-        A_Q = torch.cat((torch.reshape(A_Q, (A_Q.shape[0], (self.lqr.N_x+self.lqr.N_u)**2, )),\
+        A_Q = torch.cat((torch.reshape(A_Q, (A_Q.shape[0], (self.sys.N_x+self.sys.N_u)**2, )),\
                          torch.ones((A_Q.shape[0], 1), dtype=type)), -1)
 
         mean_XU_plus = self.__high_performance_mean_4D__(Xplus)
 
-        Aplus_V = self.lqr.gamma*mean_XU_plus#torch.mean(torch.matmul(Xplus, Xplus.transpose(2, 3)), 1)
+        Aplus_V = self.sys.gamma*mean_XU_plus#torch.mean(torch.matmul(Xplus, Xplus.transpose(2, 3)), 1)
 
-        Aplus_V = torch.cat((torch.reshape(Aplus_V, (Aplus_V.shape[0], self.lqr.N_x**2, )),\
-                             self.lqr.gamma*torch.ones((Aplus_V.shape[0], 1), dtype=type)), -1)
+        Aplus_V = torch.cat((torch.reshape(Aplus_V, (Aplus_V.shape[0], self.sys.N_x**2, )),\
+                             self.sys.gamma*torch.ones((Aplus_V.shape[0], 1), dtype=type)), -1)
 
         A_V = torch.matmul(X, X.transpose(1,2))
 
-        A_V = torch.cat((torch.reshape(A_V, (A_V.shape[0], self.lqr.N_x**2, )),\
+        A_V = torch.cat((torch.reshape(A_V, (A_V.shape[0], self.sys.N_x**2, )),\
                          torch.ones((A_V.shape[0], 1), dtype=type)), -1)
 
         #A = [[A_Q, -Aplus_V], [-A_Q, A_V]]
@@ -183,10 +192,10 @@ class Qstar_LP(LP_approach):
         b = torch.cat((L.flatten(), torch.zeros(A_Q.shape[0], dtype=type)))
 
         c = -torch.cat((torch.reshape(torch.diag_embed(self.Sigma),\
-                      ((self.lqr.N_x+self.lqr.N_u)**2, 1)),\
+                      ((self.sys.N_x+self.sys.N_u)**2, 1)),\
                        torch.tensor([[1.]], dtype=type)), 0)
 
-        c = torch.cat((c.flatten(), torch.zeros(self.lqr.N_x**2+1, dtype=type)))
+        c = torch.cat((c.flatten(), torch.zeros(self.sys.N_x**2+1, dtype=type)))
 
         x_star, obj_fun, time = self.__call_solver__(A, b, c)
 
@@ -194,17 +203,17 @@ class Qstar_LP(LP_approach):
 
             S = torch.tensor(x_star, dtype=type).unsqueeze(1)
 
-            Q_q = torch.reshape(S[:(self.lqr.N_u + self.lqr.N_x)**2], \
-                               (self.lqr.N_u + self.lqr.N_x, self.lqr.N_u + self.lqr.N_x))
+            Q_q = torch.reshape(S[:(self.sys.N_u + self.sys.N_x)**2], \
+                               (self.sys.N_u + self.sys.N_x, self.sys.N_u + self.sys.N_x))
 
-            e_q = S[(self.lqr.N_u + self.lqr.N_x)**2:(self.lqr.N_u + self.lqr.N_x)**2+1]
+            e_q = S[(self.sys.N_u + self.sys.N_x)**2:(self.sys.N_u + self.sys.N_x)**2+1]
 
-            Q_v = torch.reshape(S[(self.lqr.N_u + self.lqr.N_x)**2+1:(self.lqr.N_u \
-                                  + self.lqr.N_x)**2 + 1 + self.lqr.N_x**2], \
-                                  (self.lqr.N_x, self.lqr.N_x))
+            Q_v = torch.reshape(S[(self.sys.N_u + self.sys.N_x)**2+1:(self.sys.N_u \
+                                  + self.sys.N_x)**2 + 1 + self.sys.N_x**2], \
+                                  (self.sys.N_x, self.sys.N_x))
 
-            e_v = S[(self.lqr.N_u + self.lqr.N_x)**2 + 1 + self.lqr.N_x**2:\
-                    (self.lqr.N_u + self.lqr.N_x)**2 + 1 + self.lqr.N_x**2+1]
+            e_v = S[(self.sys.N_u + self.sys.N_x)**2 + 1 + self.sys.N_x**2:\
+                    (self.sys.N_u + self.sys.N_x)**2 + 1 + self.sys.N_x**2+1]
 
             return A, b, c, Q_q, e_q, Q_v, e_v, obj_fun, x_star, time
 
@@ -228,7 +237,7 @@ class Qstar_LP(LP_approach):
 
         mean_XU_plus = self.__high_performance_mean_4D__(Xplus)
 
-        Aplus_V = self.lqr.gamma*mean_XU_plus#torch.mean(torch.matmul(Xplus, Xplus.transpose(2, 3)), 1)
+        Aplus_V = self.sys.gamma*mean_XU_plus#torch.mean(torch.matmul(Xplus, Xplus.transpose(2, 3)), 1)
 
         mask = torch.cat(Aplus_V.shape[0]*[torch.eye(Aplus_V.shape[1], Aplus_V.shape[2], dtype=torch.bool).unsqueeze(0)], 0)
         Aplus_V = Aplus_V + Aplus_V.clone().masked_fill_(mask, 0)
@@ -236,7 +245,7 @@ class Qstar_LP(LP_approach):
         #extract here the upper triangular part
         Aplus_V = Aplus_V[:,torch.triu(torch.ones(Aplus_V.shape[1], Aplus_V.shape[2]))==1]
 
-        Aplus_V = torch.cat((Aplus_V, self.lqr.gamma*torch.ones((Aplus_V.shape[0], 1), dtype=type)), -1)
+        Aplus_V = torch.cat((Aplus_V, self.sys.gamma*torch.ones((Aplus_V.shape[0], 1), dtype=type)), -1)
 
         A_V = torch.matmul(X, X.transpose(1,2))
 
@@ -257,25 +266,25 @@ class Qstar_LP(LP_approach):
         c = -torch.cat((Sigma_diag[torch.triu(torch.ones(Sigma_diag.shape[0], Sigma_diag.shape[1]))==1],\
                        torch.tensor([1.], dtype=type)), 0)
 
-        c = torch.cat((c.flatten(), torch.zeros(int(self.lqr.N_x*(self.lqr.N_x+1)/2)+1, dtype=type)))
+        c = torch.cat((c.flatten(), torch.zeros(int(self.sys.N_x*(self.sys.N_x+1)/2)+1, dtype=type)))
 
         x_star, obj_fun, time = self.__call_solver__(A, b, c)
 
         if x_star is not None:
 
-            S_Q = torch.tensor(x_star, dtype=type)[:int((self.lqr.N_u + self.lqr.N_x)*(self.lqr.N_u + self.lqr.N_x+1)/2)+1]
-            S_V = torch.tensor(x_star, dtype=type)[int((self.lqr.N_u + self.lqr.N_x)*(self.lqr.N_u + self.lqr.N_x+1)/2)+1:]
+            S_Q = torch.tensor(x_star, dtype=type)[:int((self.sys.N_u + self.sys.N_x)*(self.sys.N_u + self.sys.N_x+1)/2)+1]
+            S_V = torch.tensor(x_star, dtype=type)[int((self.sys.N_u + self.sys.N_x)*(self.sys.N_u + self.sys.N_x+1)/2)+1:]
 
-            Q_q = torch.zeros(self.lqr.N_u + self.lqr.N_x, self.lqr.N_u + self.lqr.N_x, dtype=type)
+            Q_q = torch.zeros(self.sys.N_u + self.sys.N_x, self.sys.N_u + self.sys.N_x, dtype=type)
 
-            Q_q[torch.triu(torch.ones(self.lqr.N_u + self.lqr.N_x, self.lqr.N_u + self.lqr.N_x, dtype=type))==1] = S_Q[:-1]
-            mask = torch.eye(self.lqr.N_u + self.lqr.N_x, self.lqr.N_u + self.lqr.N_x, dtype=torch.bool)
+            Q_q[torch.triu(torch.ones(self.sys.N_u + self.sys.N_x, self.sys.N_u + self.sys.N_x, dtype=type))==1] = S_Q[:-1]
+            mask = torch.eye(self.sys.N_u + self.sys.N_x, self.sys.N_u + self.sys.N_x, dtype=torch.bool)
             Q_q = Q_q + Q_q.clone().transpose(0,1).masked_fill_(mask, 0)
 
-            Q_v = torch.zeros(self.lqr.N_x, self.lqr.N_x, dtype=type)
+            Q_v = torch.zeros(self.sys.N_x, self.sys.N_x, dtype=type)
 
-            Q_v[torch.triu(torch.ones(self.lqr.N_x, self.lqr.N_x, dtype=type))==1] = S_V[:-1]
-            mask = torch.eye(self.lqr.N_x, self.lqr.N_x, dtype=torch.bool)
+            Q_v[torch.triu(torch.ones(self.sys.N_x, self.sys.N_x, dtype=type))==1] = S_V[:-1]
+            mask = torch.eye(self.sys.N_x, self.sys.N_x, dtype=torch.bool)
             Q_v = Q_v + Q_v.clone().transpose(0,1).masked_fill_(mask, 0)
 
             return A, b, c, Q_q, S_Q[-1], Q_v, S_V[-1], obj_fun, x_star, time
@@ -288,16 +297,17 @@ class Qhat_LP(LP_approach):
 
     """Data-Driven Q-learning with LP approach on the simplified operator."""
 
-    def __init__(self, lqr, Sigma, pi, LP_solver='scipy', verbose=1):
+    def __init__(self, sys, Sigma, pi, LP_solver='scipy', verbose=1):
 
-        super().__init__(lqr, Sigma, pi, LP_solver, verbose)
-        #self.N_var = (self.lqr.N_x+self.lqr.N_u)**2 + 1
+        super().__init__(sys, Sigma, pi, LP_solver, verbose)
+        #self.N_var = (self.sys.N_x+self.sys.N_u)**2 + 1
 
-    def buffer(self, P, K, M=None, X_space=[-10, 10], U_space=[-10, 10], epsilon=[None, None]):
+    def buffer(self, P, K, M=None, X_space=[[-10, 10]], U_space=[-10, 10], epsilon=[None, None]):
+
         X_buffer, U_buffer, Xplus_buffer, L_buffer, W = \
         self.__sampling__(P, K, M, X_space, U_space, epsilon[0])
         if M==None:
-            Uprime_buffer = (U_space[0] - U_space[1])*torch.rand((P, self.lqr.N_u, 1), dtype=type) + U_space[1]
+            Uprime_buffer = (U_space[0] - U_space[1])*torch.rand((P, self.sys.N_u, 1), dtype=type) + U_space[1]
             Uprime_buffer = torch.cat((K*[Uprime_buffer.unsqueeze(1)]), 1)
         else:
             Uprime_buffer = self.policy(M, Xplus_buffer, epsilon[1])
@@ -308,19 +318,19 @@ class Qhat_LP(LP_approach):
         XU_prime = torch.cat((Xplus, Uprime), 2)
         if XU_prime.shape[1]<self.K_lim:
             A = torch.matmul(XU, XU.transpose(1,2)) -\
-                self.lqr.gamma*torch.mean(torch.matmul(XU_prime, XU_prime.transpose(2, 3)), 1)
+                self.sys.gamma*torch.mean(torch.matmul(XU_prime, XU_prime.transpose(2, 3)), 1)
         else:
             mean_XU_prime = self.__high_performance_mean_4D__(XU_prime)
             A = torch.matmul(XU, XU.transpose(1,2)) -\
-                self.lqr.gamma*mean_XU_prime
+                self.sys.gamma*mean_XU_prime
 
-        A = torch.cat((torch.reshape(A, (A.shape[0], (self.lqr.N_x+self.lqr.N_u)**2, )),\
-                      (1-self.lqr.gamma)*torch.ones((A.shape[0], 1), dtype=type)), -1)
+        A = torch.cat((torch.reshape(A, (A.shape[0], (self.sys.N_x+self.sys.N_u)**2, )),\
+                      (1-self.sys.gamma)*torch.ones((A.shape[0], 1), dtype=type)), -1)
 
         b = L.flatten()
 
         c = -torch.cat((torch.reshape(torch.diag_embed(self.Sigma),\
-                      ((self.lqr.N_x+self.lqr.N_u)**2, 1)),\
+                      ((self.sys.N_x+self.sys.N_u)**2, 1)),\
                        torch.tensor([[1.]], dtype=type)), 0)
 
         c = c.flatten()
@@ -330,8 +340,8 @@ class Qhat_LP(LP_approach):
         if x_star is not None:
             S = torch.tensor(x_star, dtype=type).unsqueeze(1)
 
-            return A, b, c, torch.reshape(S[:-1, :], (self.lqr.N_u + self.lqr.N_x,\
-                   self.lqr.N_u + self.lqr.N_x)), S[-1, :], None, None, obj_fun, x_star, time
+            return A, b, c, torch.reshape(S[:-1, :], (self.sys.N_u + self.sys.N_x,\
+                   self.sys.N_u + self.sys.N_x)), S[-1, :], None, None, obj_fun, x_star, time
         else:
             return A, b, c, None, None, None, None, obj_fun, x_star, time
 
@@ -344,12 +354,12 @@ class Qhat_LP(LP_approach):
         if XU_prime.shape[1]<self.K_lim:
 
             A = torch.matmul(XU, XU.transpose(1,2)) -\
-                self.lqr.gamma*torch.mean(torch.matmul(XU_prime, XU_prime.transpose(2, 3)), 1)
+                self.sys.gamma*torch.mean(torch.matmul(XU_prime, XU_prime.transpose(2, 3)), 1)
         else:
             mean_XU_prime = self.__high_performance_mean_4D__(XU_prime)
 
             A = torch.matmul(XU, XU.transpose(1,2)) -\
-                self.lqr.gamma*mean_XU_prime
+                self.sys.gamma*mean_XU_prime
 
         mask = torch.cat(A.shape[0]*[torch.eye(A.shape[1], A.shape[2], dtype=torch.bool).unsqueeze(0)], 0)
         A = A + A.clone().masked_fill_(mask, 0)
@@ -357,7 +367,7 @@ class Qhat_LP(LP_approach):
         #extract here the upper triangular part
         A = A[:,torch.triu(torch.ones(A.shape[1], A.shape[2]))==1]
 
-        A = torch.cat((A, (1-self.lqr.gamma)*torch.ones((A.shape[0], 1), dtype=type)), -1)
+        A = torch.cat((A, (1-self.sys.gamma)*torch.ones((A.shape[0], 1), dtype=type)), -1)
 
         b = L.flatten()
 
@@ -372,10 +382,10 @@ class Qhat_LP(LP_approach):
 
             S = torch.tensor(x_star, dtype=type)
 
-            Q = torch.zeros(self.lqr.N_u + self.lqr.N_x, self.lqr.N_u + self.lqr.N_x, dtype=type)
+            Q = torch.zeros(self.sys.N_u + self.sys.N_x, self.sys.N_u + self.sys.N_x, dtype=type)
 
-            Q[torch.triu(torch.ones(self.lqr.N_u + self.lqr.N_x, self.lqr.N_u + self.lqr.N_x, dtype=type))==1] = S[:-1]
-            mask = torch.eye(self.lqr.N_u + self.lqr.N_x, self.lqr.N_u + self.lqr.N_x, dtype=torch.bool)
+            Q[torch.triu(torch.ones(self.sys.N_u + self.sys.N_x, self.sys.N_u + self.sys.N_x, dtype=type))==1] = S[:-1]
+            mask = torch.eye(self.sys.N_u + self.sys.N_x, self.sys.N_u + self.sys.N_x, dtype=torch.bool)
             Q = Q + Q.clone().transpose(0,1).masked_fill_(mask, 0)
 
             return A, b, c, Q, S[-1], None, None, obj_fun, x_star, time
