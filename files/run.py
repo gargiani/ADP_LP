@@ -92,13 +92,13 @@ print('policy buffer')
 
 if args.exp_sampling:
     X, U, Xplus, L_buffer, W, Uprime = method.buffer(n_constraints, args.samples,
-    X_space=[-args.x_range, args.x_range], U_space=[-args.u_range, args.u_range])
+    X_space=[[-args.x_range, args.x_range]], U_space=[-args.u_range, args.u_range])
 else:
     #exploration policy
     M_0 = M_opt + 0.2*torch.ones((N_u, args.n_x), dtype=type)
 
     X, U, Xplus, L_buffer, W, Uprime = method.buffer(n_constraints, args.samples,
-    M=M_0, X_space=[-args.x_range, args.x_range], epsilon=eps)
+    M=M_0, X_space=[[-args.x_range, args.x_range]], epsilon=eps)
 
 print('policy evaluation')
 
@@ -118,35 +118,38 @@ if x_star is not None:
         res = {'M': M, 'obj_fun': E_Q, 'obj_fun_star': E_Qstar,\
                'time': time,'M_star': M_opt.tolist(), 'gap': gap.tolist(),\
                'Q_q': Q_q.tolist(),'e_q': e_q.tolist(),'rho':rho,\
-               'eps': eps,'gamma': gamma, 'sigma': std_dev,\
+               'gamma': gamma, 'sigma': std_dev,\
                'c': XU_weights.tolist(), 'x_range':args.x_range, 'state':'solved'}
         if args.exp_sampling:
             res['u_range'] = args.u_range
+
         else:
             res['M_0'] = M_0.tolist()
+            res['eps'] = eps
 
 else:
     M = None
     if args.save:
         res = {'state':'unbounded', 'obj_fun_star': E_Qstar,\
                'time': time,'M_star': M_opt.tolist(), 'gap': gap.tolist(),\
-               'rho':rho,'eps': eps,'gamma': gamma, 'sigma': std_dev,\
+               'rho':rho,'gamma': gamma, 'sigma': std_dev,\
                'c': XU_weights.tolist(), 'x_range':args.x_range}
         if args.exp_sampling:
             res['u_range'] = args.u_range
         else:
             res['M_0'] = M_0.tolist()
+            res['eps'] = eps
 
 if args.LP_approach == 1:
     try:
         print('optimality gap {}, solver time [s] {}'.format(np.abs(E_Q-E_Qstar), time))
     except:
-        print('ops! looks like your problem is unbounded.')
+        print('ops! looks like your problem is unbounded! solver time [s] {}'.format(time))
 elif args.LP_approach == 2:
     try:
         print('optimality gap {}, solver time [s] {}'.format(np.abs(E_Q-gap-E_Qstar), time))
     except:
-        print('ops! looks like your problem is unbounded.')
+        print('ops! looks like your problem is unbounded! solver time [s] {}'.format(time))
 
 if args.save:
     #saving results
@@ -159,7 +162,13 @@ if args.save:
     if not os.path.exists(os.path.join(res_dir, root_directory)):
         os.makedirs(os.path.join(res_dir, root_directory))
 
-    f_name = '{}_states_{}_constraint_{}_sigma_{}_samples_{}_run.json'.format(args.n_x, args.n_constraints, std_dev, args.samples, args.random_seed)
+    if args.exp_sampling:
+
+        f_name = '{}_states_{}_constraint_{}_sigma_{}_samples_{}_xrange_{}_urange_{}_symmetric_{}_run.json'.format(args.n_x, args.n_constraints, std_dev, args.samples, args.x_range, args.u_range, args.symmetric, args.random_seed)
+
+    else:
+
+        f_name = '{}_states_{}_constraint_{}_sigma_{}_samples_{}_xrange_{}_eps_{}_symmetric_{}_run.json'.format(args.n_x, args.n_constraints, std_dev, args.samples, args.x_range, args.eps, args.symmetric, args.random_seed)
 
     with open(os.path.join(res_dir, root_directory, f_name), 'w') as f:
 
