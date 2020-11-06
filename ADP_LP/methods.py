@@ -75,6 +75,9 @@ class LP_approach:
                     m.setParam('OutputFlag', 0)
 
                 m.setParam('DualReductions', 0)
+
+                #m.setParam('NumericFocus', 3)
+                #m.setParam('Method', 2)
                 #m.setParam('FeasibilityTol', 1e-9)
                 #m.setParam('OptimalityTol', 1e-9)
 
@@ -306,16 +309,21 @@ class Qhat_LP(LP_approach):
 
         X_buffer, U_buffer, Xplus_buffer, L_buffer, W = \
         self.__sampling__(P, K, M, X_space, U_space, epsilon[0])
+
         if M==None:
             Uprime_buffer = (U_space[0] - U_space[1])*torch.rand((P, self.sys.N_u, 1), dtype=type) + U_space[1]
             Uprime_buffer = torch.cat((K*[Uprime_buffer.unsqueeze(1)]), 1)
         else:
             Uprime_buffer = self.policy(M, Xplus_buffer, epsilon[1])
+
         return X_buffer, U_buffer, Xplus_buffer, L_buffer, W, Uprime_buffer
 
     def policy_evaluation(self, X, U, L, Xplus, Uprime):
+
         XU = torch.cat((X, U), 1)
+
         XU_prime = torch.cat((Xplus, Uprime), 2)
+
         if XU_prime.shape[1]<self.K_lim:
             A = torch.matmul(XU, XU.transpose(1,2)) -\
                 self.sys.gamma*torch.mean(torch.matmul(XU_prime, XU_prime.transpose(2, 3)), 1)

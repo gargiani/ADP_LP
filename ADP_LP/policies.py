@@ -14,6 +14,6 @@ def linear_policy(M, X, epsilon=None):
         if len(U.shape)==3:
             U = U + noise
         else:
-            U = U + noise.unsqueeze(1)#torch.reshape(epsilon*normal.sample((U.shape[0]*U.shape[1], )), U.shape)
-
+            U = U + noise.unsqueeze(1)
+            
     return U

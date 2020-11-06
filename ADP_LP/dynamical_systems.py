@@ -70,14 +70,14 @@ class dlqr:
         E_Qstar = (torch.diag_embed(c)*Qstar).sum()+e
 
         gap = (self.gamma)/(1-self.gamma)*\
-              (torch.matmul(torch.matmul(torch.matmul(Qxu_star, torch.inverse(Quu_star)),\
-               torch.transpose(Qxu_star, 0, 1)),self.sigma**2*torch.eye(self.N_x, dtype=type))).sum()
+              (torch.matmul(torch.matmul(Qxu_star, torch.inverse(Quu_star)),\
+               torch.transpose(Qxu_star, 0, 1))*(self.sigma**2*torch.eye(self.N_x, dtype=type))).sum()
 
         return Qstar, E_Qstar.item(), gap
 
 class cart_pole:
 
-    def __init__(self, m_c, m_p, l, delta_t, C, rho, gamma, sigma):
+    def __init__(self, m_c, m_p, l, delta_t, C, rho, gamma, sigma, equilibrium=[0,0,0,0]):
 
         #non-linear system with 4 states and 1 input
         self.N_u = 1
@@ -86,6 +86,8 @@ class cart_pole:
         self.m_c = m_c
         self.m_p = m_p
         self.l = l
+
+        self.equilibrium = torch.tensor(equilibrium, dtype=type).unsqueeze(1)
 
         self.g = 9.8
 
@@ -101,7 +103,14 @@ class cart_pole:
 
     def linearized_system(self):
 
-        raise Exception('not implemented')
+        A = torch.tensor([[0, 1, 0, 0], [0, 0, -self.g, self.l],\
+                          [0, 0, 0, 1], [0, 0, ((self.m_p+self.m_c)*self.g)/((self.m_p+self.m_c)*self.l - self.m_p*self.l), 0]], dtype=type)
+        B = torch.tensor([[0], [0], [0], [1/((self.m_p+self.m_c)*self.l-self.m_p*self.l)]], dtype=type)
+
+        A_d = torch.eye(self.N_x, dtype=type) + self.delta_t*A
+        B_d = self.delta_t*B
+
+        return A_d, B_d
 
     def __f1__(self, X2, X3, U):
 
@@ -154,14 +163,14 @@ class cart_pole:
             W = torch.reshape(self.normal.sample((X.shape[0]*K, )), (X.shape[0], K, self.N_x, 1))
             #W = torch.normal(0, self.sigma, size=(X.shape[0], K, self.N_x, 1), dtype=type)
 
-        L_x = torch.matmul(torch.matmul(X.transpose(1,2), self.Q), X)
+        L_x = torch.matmul(torch.matmul((X-self.equilibrium).transpose(1,2), self.Q), (X-self.equilibrium))
         L_u = torch.matmul(torch.matmul(U.transpose(1,2), self.R), U)
 
         return X_plus.unsqueeze(1) + W, L_x + L_u, W
 
 class pendulum:
 
-    def __init__(self, m, l, k, delta_t, C, rho, gamma, sigma):
+    def __init__(self, m, l, k, delta_t, C, rho, gamma, sigma, equilibrium=[0,0]):
 
         #non-linear system with 2 states and 1 input
         self.N_u = 1
@@ -171,13 +180,18 @@ class pendulum:
         self.l = l
         self.k = k
 
+        self.equilibrium = torch.tensor(equilibrium, dtype=type).unsqueeze(1)
+
         self.g = 9.8
 
         self.delta_t = delta_t
 
+        self.pi = np.pi
+
         self.sigma = sigma
         self.gamma = gamma
         self.Q = torch.matmul(torch.transpose(C, 0, 1), C)
+
         self.R = rho*torch.eye(self.N_u, dtype=type)
         #this is the distribution of noise affecting the system
         self.normal = torch.distributions.normal.Normal(torch.zeros((self.N_x, 1), dtype=type),\
@@ -185,11 +199,17 @@ class pendulum:
 
     def linearized_system(self):
 
-        raise Exception('not implemented')
+        A = torch.tensor([[0, 1], [self.g/self.l, -self.k/(self.m*self.l)]], dtype=type)
+        B = torch.tensor([[0], [1]], dtype=type)
+
+        A_d = torch.eye(self.N_x, dtype=type) + self.delta_t*A
+        B_d = self.delta_t*B
+
+        return A_d, B_d
 
     def __f1__(self, X0, X1, U):
 
-        return -(self.g/self.l)*torch.sin(X0)-(self.k/(self.m*self.l))*X1 + U
+        return -(self.g/self.l)*torch.sin(X0+self.pi)-(self.k/(self.m*self.l))*X1 + U
 
     def __split(self, X):
 
@@ -228,7 +248,7 @@ class pendulum:
             W = torch.reshape(self.normal.sample((X.shape[0]*K, )), (X.shape[0], K, self.N_x, 1))
             #W = torch.normal(0, self.sigma, size=(X.shape[0], K, self.N_x, 1), dtype=type)
 
-        L_x = torch.matmul(torch.matmul(X.transpose(1,2), self.Q), X)
+        L_x = torch.matmul(torch.matmul((X-self.equilibrium).transpose(1,2), self.Q), (X-self.equilibrium))
         L_u = torch.matmul(torch.matmul(U.transpose(1,2), self.R), U)
 
         return X_plus.unsqueeze(1) + W, L_x + L_u, W
