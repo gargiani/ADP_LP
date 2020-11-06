@@ -1,6 +1,5 @@
-from dynamical_systems import pendulum
-#from ADP_LP.methods import Qstar_LP, Qhat_LP
-from methods import Qstar_LP, Qhat_LP
+from ADP_LP.dynamical_systems import pendulum, dlqr
+from ADP_LP.methods import Qstar_LP, Qhat_LP
 from ADP_LP.policies import linear_policy
 import numpy as np
 import json
@@ -28,7 +27,7 @@ parser.add_argument('-LP_solver', type=str, help='LP solver', default='GUROBI')
 parser.add_argument('-samples', type=int, help='number of samples for \
 empirical mean', default=1)
 parser.add_argument('-u_range', type=float, help='range for u sampling', default=10.0)
-parser.add_argument('-x_range', type=float, nargs='+', help='range for x sampling', default=0.01)
+parser.add_argument('-x_range', type=float, nargs='+', help='range for x sampling', default=[0.01])
 parser.add_argument('-std_dev', type=float, help='standard deviation for noise \
 affecting the dynamical system', default=0.0)
 parser.add_argument('-symmetric', type=str2bool, help='space of symmetric or\
@@ -61,18 +60,24 @@ k = args.k
 
 n_x = 2
 delta_t = args.delta_t
-C = torch.eye(n_x, dtype=type)
-rho = 0.95
-gamma = 0.95
+
+C = torch.diag(torch.sqrt(torch.tensor([100, 10], dtype=type)))
+rho = 0.001
+gamma = 0.9999
 std_dev = args.std_dev
 
-x_ranges = [[-ii, ii] for ii in args.x_range]
+centers = [0, 0]
+x_ranges = [[-ii+centers[jj], ii+centers[jj]] for jj,ii in enumerate(args.x_range)]
 
-sys = pendulum(m, l, k, delta_t, C, rho, gamma, std_dev)
-
+sys = pendulum(m, l, k, delta_t, C, rho, gamma, std_dev, equilibrium=centers)
 
 #state-action relevance weights, see http://www.mit.edu/~pucci/discountedLP.pdf
 XU_weights = torch.cat((torch.ones(sys.N_x, dtype=type), 0.8*torch.ones(sys.N_u, dtype=type)), 0)
+
+A_lin, B_lin = sys.linearized_system()
+lqr = dlqr(A_lin, B_lin, C, rho, gamma, std_dev)
+P_lqr, M_lqr, e_lqr = lqr.optimal_solution()
+Q_lqr, E_Qlqr, gap = lqr.optimal_q(P_lqr, e_lqr, XU_weights)
 
 #optimization method
 if args.LP_approach == 1:
@@ -98,7 +103,7 @@ if args.exp_sampling:
     X_space=x_ranges, U_space=[-args.u_range, args.u_range])
 else:
     #exploration policy
-    M_0 = 0.001*torch.ones((sys.N_u, sys.N_x), dtype=type)
+    M_0 = 0.01*M_lqr
 
     X, U, Xplus, L_buffer, W, Uprime = method.buffer(n_constraints, args.samples,
     M=M_0, X_space=x_ranges, epsilon=eps)
@@ -117,8 +122,10 @@ print('extract the greedy policy')
 if x_star is not None:
     M = method.greedy_policy(Q_q)
     M = M.tolist()
+    
     if args.save:
         res = {'M': M, 'obj_fun': E_Q,
+               'M_lqr': M_lqr.tolist(), 'gap': gap.tolist(), 'Q_lqr': Q_lqr.tolist(),
                'time': time,'Q_q': Q_q.tolist(),'e_q': e_q.tolist(),'rho':rho,\
                'gamma': gamma, 'sigma': std_dev,\
                'c': XU_weights.tolist(), 'x_range':args.x_range, 'state':'solved'}
