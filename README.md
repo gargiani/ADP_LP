@@ -17,6 +17,6 @@ Note: in order to install this python package, execute the following steps:
 4) cd into the cloned repo on your local machine
 5) run the command: ```python setup.py install```
 
-To check the installation, go to the folder ```files``` and run the command: ```python run.py -n_x 2```
+To check the installation, go to the folder ```files``` and run the command: ```sh bash.sh```
 
 
