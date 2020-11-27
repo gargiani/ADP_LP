@@ -31,11 +31,8 @@ class dlqr:
             W = torch.zeros((X.shape[0], K, self.N_x, 1), dtype=type)
 
         else:
-            #TODO is there a more efficient way to do that?? I do not think so...
-            #sampling is really expensive
-            #torch.normal --> takes as input the std deviation!
+
             W = torch.reshape(self.normal.sample((X.shape[0]*K, )), (X.shape[0], K, self.N_x, 1))
-            #W = torch.normal(0, self.sigma, size=(X.shape[0], K, self.N_x, 1), dtype=type)
 
         L_x = torch.matmul(torch.matmul(X.transpose(1,2), self.Q), X)
         L_u = torch.matmul(torch.matmul(U.transpose(1,2), self.R), U)
@@ -79,7 +76,6 @@ class cart_pole:
 
     def __init__(self, m_c, m_p, l, delta_t, C, rho, gamma, sigma, equilibrium=[0,0,0,0]):
 
-        #non-linear system with 4 states and 1 input
         self.N_u = 1
         self.N_x = 4
 
@@ -146,9 +142,6 @@ class cart_pole:
         return X_plus
 
     def simulate(self, K, X, U):
-        '''
-        see equations (23)-(24) in https://coneural.org/florian/papers/05_cart_pole.pdf for a model
-        '''
 
         X_plus = self.__f__(X, U)
 
@@ -157,11 +150,8 @@ class cart_pole:
             W = torch.zeros((X.shape[0], K, self.N_x, 1), dtype=type)
 
         else:
-            #TODO is there a more efficient way to do that?? I do not think so...
-            #sampling is really expensive
-            #torch.normal --> takes as input the std deviation!
+
             W = torch.reshape(self.normal.sample((X.shape[0]*K, )), (X.shape[0], K, self.N_x, 1))
-            #W = torch.normal(0, self.sigma, size=(X.shape[0], K, self.N_x, 1), dtype=type)
 
         L_x = torch.matmul(torch.matmul((X-self.equilibrium).transpose(1,2), self.Q), (X-self.equilibrium))
         L_u = torch.matmul(torch.matmul(U.transpose(1,2), self.R), U)
@@ -172,7 +162,6 @@ class pendulum:
 
     def __init__(self, m, l, k, delta_t, C, rho, gamma, sigma, equilibrium=[0,0]):
 
-        #non-linear system with 2 states and 1 input
         self.N_u = 1
         self.N_x = 2
 
@@ -231,9 +220,6 @@ class pendulum:
         return X_plus
 
     def simulate(self, K, X, U):
-        '''
-        see equations (23)-(24) in https://coneural.org/florian/papers/05_cart_pole.pdf for a model
-        '''
 
         X_plus = self.__f__(X, U)
 
@@ -242,11 +228,8 @@ class pendulum:
             W = torch.zeros((X.shape[0], K, self.N_x, 1), dtype=type)
 
         else:
-            #TODO is there a more efficient way to do that?? I do not think so...
-            #sampling is really expensive
-            #torch.normal --> takes as input the std deviation!
+
             W = torch.reshape(self.normal.sample((X.shape[0]*K, )), (X.shape[0], K, self.N_x, 1))
-            #W = torch.normal(0, self.sigma, size=(X.shape[0], K, self.N_x, 1), dtype=type)
 
         L_x = torch.matmul(torch.matmul((X-self.equilibrium).transpose(1,2), self.Q), (X-self.equilibrium))
         L_u = torch.matmul(torch.matmul(U.transpose(1,2), self.R), U)
