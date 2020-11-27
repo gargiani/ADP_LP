@@ -7,7 +7,7 @@ The linear programming approach for ADP
 An implementation of the linear programming
 approach for Q-learning. 
 
-More details can be found in https://arxiv.org/abs/2003.08721
+For more details on the LP approach for Q-learning check out our paper https://arxiv.org/abs/2003.08721
 
 In order to install this python package, execute the following steps:
 
@@ -20,5 +20,7 @@ In order to install this python package, execute the following steps:
 7) run the command: ```python setup.py install```
 
 To check the installation, go to the folder ```\files``` and run the command: ```sh bash.sh```.
+
+Note: if you make use of this toolbox for your research, please cite https://arxiv.org/abs/2003.08721
 
 
