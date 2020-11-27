@@ -1,7 +1,7 @@
 ADP_LP
 ===================================
 
-The linear programming approach for ADP
+The linear programming approach for Q-learning
 -----------------------------------
 
 An implementation of the linear programming
