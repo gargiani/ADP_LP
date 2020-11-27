@@ -9,7 +9,7 @@ approach for Q-learning.
 
 More details can be found in https://arxiv.org/abs/2003.08721
 
-Note: in order to install this python package, execute the following steps:
+In order to install this python package, execute the following steps:
 
 1) create a conda environment with python 3.6 with the command ```conda create -n yourenvname python=3.6 anaconda```
 2) install gurobi with the command: ```conda install gurobi```
